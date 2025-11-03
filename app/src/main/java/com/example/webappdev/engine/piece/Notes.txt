@@ -1,0 +1,3 @@
+### copyForSim method
+Creates a copy of the piece for board simulations
+Board simulations help to check for validity of movements and coordinates
