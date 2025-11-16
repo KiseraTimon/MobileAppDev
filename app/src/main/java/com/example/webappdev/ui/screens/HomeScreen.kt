@@ -11,9 +11,12 @@ import com.example.webappdev.ui.components.Navbar
 import com.example.webappdev.ui.components.Footer
 
 @Composable
-fun HomeScreen(user: User, onStartGame: () -> Unit) {
+fun HomeScreen(user: User?, onStartGame: () -> Unit, onMatchTimer: () -> Unit) {
+
     Scaffold(
-        topBar = { Navbar(user = user, isInGame = false) },
+        topBar = {
+            Navbar(user = user, isInGame = false)
+        },
         bottomBar = { Footer(isInGame = false) }
     ) { padding ->
         Column(
@@ -22,17 +25,11 @@ fun HomeScreen(user: User, onStartGame: () -> Unit) {
                 .padding(padding),
             verticalArrangement = Arrangement.Center
         ) {
-            // Opening GameScreen
             ChessButton("New Game") { onStartGame() }
-
-            // Opening TimerScreen
-            ChessButton("Match Timer") { /* Open timer dialog */ }
-
-            // Opening SettingsScreen
-            ChessButton("Settings") { /* Navigate to settings */ }
-
-            // Opening Accounts Screen
-            ChessButton("Account") { /* Open account page */ }
+            ChessButton("Match Timer") { onMatchTimer() }
+            ChessButton("Settings") { /* Settings */ }
+            ChessButton("Account") { /* Account */ }
         }
     }
 }
+
