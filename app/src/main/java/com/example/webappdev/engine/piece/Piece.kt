@@ -5,14 +5,12 @@ import com.example.webappdev.engine.main.GamePanel
 import com.example.webappdev.engine.main.Type
 import kotlin.math.abs
 
-// Piece Engine Logic + Position & Movement Helpers
 open class Piece(var color: Int, var col: Int, var row: Int) {
+    lateinit var panel: GamePanel
     var type: Type? = null
 
-    // Pixel offsets kept (for compatibility)
     var x: Int = getX(col)
     var y: Int = getY(row)
-
     var preCol: Int = col
     var preRow: Int = row
 
@@ -20,172 +18,73 @@ open class Piece(var color: Int, var col: Int, var row: Int) {
     var moved: Boolean = false
     var twoStepped: Boolean = false
 
-    // Simulation Copy
     open fun copyForSim(): Piece {
         val p = Piece(color, col, row)
+        p.panel = this.panel
         p.type = this.type
-        p.x = this.x
-        p.y = this.y
-        p.preCol = this.preCol
-        p.preRow = this.preRow
+        p.x = this.x; p.y = this.y
+        p.preCol = this.preCol; p.preRow = this.preRow
         p.hittingPiece = this.hittingPiece
-        p.moved = this.moved
-        p.twoStepped = this.twoStepped
+        p.moved = this.moved; p.twoStepped = this.twoStepped
         return p
     }
 
-    fun getX(col: Int): Int = col * Board.SQUARE_SIZE
-    fun getY(row: Int): Int = row * Board.SQUARE_SIZE
-    fun getCol(px: Int): Int = (px + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
-    fun getRow(py: Int): Int = (py + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
+    fun getX(col: Int) = col * Board.SQUARE_SIZE
+    fun getY(row: Int) = row * Board.SQUARE_SIZE
+    fun getCol(px: Int) = (px + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
+    fun getRow(py: Int) = (py + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
 
-    // Position Updates
     fun updatePosition() {
-        // en-passant detection for pawns (two-stepped)
-        if (type == Type.PAWN) {
-            if (abs(row - preRow) == 2) {
-                twoStepped = true
-            }
+        if (type != null && type == Type.PAWN && kotlin.math.abs(row - preRow) == 2) {
+            twoStepped = true
         }
-        x = getX(col)
-        y = getY(row)
-        preCol = getCol(x)
-        preRow = getRow(y)
+        x = getX(col); y = getY(row)
+        preCol = col; preRow = row
         moved = true
     }
 
-    // Position Resets
     fun resetPosition() {
-        col = preCol
-        row = preRow
-        x = getX(col)
-        y = getY(row)
+        col = preCol; row = preRow
+        x = getX(col); y = getY(row)
     }
 
-    // Checks
+    fun isWithinBoard(c: Int, r: Int) = (c in 0..7 && r in 0..7)
+    fun isSameSquare(c: Int, r: Int) = (c == preCol && r == preRow)
+
     open fun canMove(targetCol: Int, targetRow: Int): Boolean = false
 
-    fun isWithinBoard(targetCol: Int, targetRow: Int): Boolean =
-        targetCol in 0..7 && targetRow in 0..7
-
-    fun isSameSquare(targetCol: Int, targetRow: Int): Boolean =
-        targetCol == preCol && targetRow == preRow
-
-    fun getHittingPiece(targetCol: Int, targetRow: Int): Piece? {
-        for (piece in GamePanel().simPieces) {
-            if (piece.col == targetCol && piece.row == targetRow && piece !== this) return piece
-        }
-        return null
-    }
-
-    fun isValidSquare(targetCol: Int, targetRow: Int): Boolean {
-        hittingPiece = null
-        for (p in GamePanel().simPieces) {
-            if (p.col == targetCol && p.row == targetRow && p !== this) {
-                hittingPiece = p
-                break
+    // helpers for sliding pieces
+    protected fun isClearStraight(targetCol: Int, targetRow: Int): Boolean {
+        if (targetCol == preCol) {
+            val step = if (targetRow > preRow) 1 else -1
+            var r = preRow + step
+            while (r != targetRow) {
+                if (panel.simPieces.any { it.col == preCol && it.row == r }) return false
+                r += step
             }
+            return true
         }
-        if (hittingPiece == null) return true
-        if (hittingPiece!!.color != this.color) return true
-        // same color - not valid
-        hittingPiece = null
-        return false
-    }
-
-    fun pieceIsOnStraightLine(targetCol: Int, targetRow: Int): Boolean {
-        // when moving left
-        if (targetCol < preCol) {
-            for (c in preCol - 1 downTo targetCol + 1) {
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == targetRow) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
+        if (targetRow == preRow) {
+            val step = if (targetCol > preCol) 1 else -1
+            var c = preCol + step
+            while (c != targetCol) {
+                if (panel.simPieces.any { it.col == c && it.row == preRow }) return false
+                c += step
             }
-        }
-        // moving right
-        if (targetCol > preCol) {
-            for (c in preCol + 1 until targetCol) {
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == targetRow) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
-        }
-        // moving up
-        if (targetRow < preRow) {
-            for (r in preRow - 1 downTo targetRow + 1) {
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == targetCol && piece.row == r) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
-        }
-        // moving down
-        if (targetRow > preRow) {
-            for (r in preRow + 1 until targetRow) {
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == targetCol && piece.row == r) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
+            return true
         }
         return false
     }
 
-    fun pieceIsOnDiagonalLine(targetCol: Int, targetRow: Int): Boolean {
-        if (targetRow < preRow) {
-            // up-left
-            for (c in preCol - 1 downTo targetCol + 1) {
-                val diff = abs(c - preCol)
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == preRow - diff) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
-            // up-right
-            for (c in preCol + 1 until targetCol) {
-                val diff = abs(c - preCol)
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == preRow - diff) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
+    protected fun isClearDiagonal(targetCol: Int, targetRow: Int): Boolean {
+        val dc = if (targetCol > preCol) 1 else -1
+        val dr = if (targetRow > preRow) 1 else -1
+        var c = preCol + dc
+        var r = preRow + dr
+        while (c != targetCol && r != targetRow) {
+            if (panel.simPieces.any { it.col == c && it.row == r }) return false
+            c += dc; r += dr
         }
-        if (targetRow > preRow) {
-            // down-left
-            for (c in preCol - 1 downTo targetCol + 1) {
-                val diff = abs(c - preCol)
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == preRow + diff) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
-            // down-right
-            for (c in preCol + 1 until targetCol) {
-                val diff = abs(c - preCol)
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == c && piece.row == preRow + diff) {
-                        hittingPiece = piece
-                        return true
-                    }
-                }
-            }
-        }
-        return false
+        return true
     }
 }

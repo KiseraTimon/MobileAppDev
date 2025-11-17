@@ -3,487 +3,217 @@ package com.example.webappdev.engine.main
 import com.example.webappdev.engine.piece.*
 import kotlin.math.abs
 
-// Game Controller
 class GamePanel {
 
-    // Colors
-    companion object {
-        const val WHITE: Int = 0
-        const val BLACK: Int = 1
-    }
+    companion object { const val WHITE = 0; const val BLACK = 1 }
 
-    // Pieces collections
-    val pieces: ArrayList<Piece> = ArrayList()
-    val simPieces: ArrayList<Piece> = ArrayList()
+    val pieces = ArrayList<Piece>()
+    val simPieces = ArrayList<Piece>()
     var castlingPiece: Piece? = null
+    var activePiece: Piece? = null
 
-    // Game fundamentals
-    private val board = Board
+    var currentColor = WHITE
+    var promotion = false
+    var gameOver = false
+    var stalemate = false
+
+    var validSquare = false
+    var canMove = false
+
+    // highlights
+    val validMoves = mutableListOf<Pair<Int, Int>>()
+    val captureMoves = mutableListOf<Pair<Int, Int>>()
+
     private val mouse = Mouse()
 
-    // Promotion options
-    private val promotionPieces: ArrayList<Piece> = ArrayList()
-    private var activePiece: Piece? = null
-    private var checkingPiece: Piece? = null
-    var currentColor: Int = WHITE
-
-    // Game-state booleans
-    var canMove: Boolean = false
-    var validSquare: Boolean = false
-    var promotion: Boolean = false
-    var gameOver: Boolean = false
-    var stalemate: Boolean = false
-
-    init {
-        // No UI initializations;
+    fun clearHighlights() {
+        validMoves.clear(); captureMoves.clear()
     }
 
-    // Initializing Pieces on Standard Starting Position
     fun initialize() {
-        pieces.clear()
-        simPieces.clear()
-        castlingPiece = null
-        activePiece = null
-        checkingPiece = null
+        pieces.clear(); simPieces.clear()
+        activePiece = null; castlingPiece = null
+        promotion = false; gameOver = false; stalemate = false
         currentColor = WHITE
-        gameOver = false
-        stalemate = false
-        promotion = false
-        canMove = false
-        validSquare = false
 
-        // Whites
-        pieces.add(Pawn(WHITE, 0, 6))
-        pieces.add(Pawn(WHITE, 1, 6))
-        pieces.add(Pawn(WHITE, 2, 6))
-        pieces.add(Pawn(WHITE, 3, 6))
-        pieces.add(Pawn(WHITE, 4, 6))
-        pieces.add(Pawn(WHITE, 5, 6))
-        pieces.add(Pawn(WHITE, 6, 6))
-        pieces.add(Pawn(WHITE, 7, 6))
-        pieces.add(Rook(WHITE, 0, 7))
-        pieces.add(Rook(WHITE, 7, 7))
-        pieces.add(Knight(WHITE, 1, 7))
-        pieces.add(Knight(WHITE, 6, 7))
-        pieces.add(Bishop(WHITE, 2, 7))
-        pieces.add(Bishop(WHITE, 5, 7))
-        pieces.add(Queen(WHITE, 3, 7))
-        pieces.add(King(WHITE, 4, 7))
+        // White
+        for (c in 0 until 8) pieces.add(Pawn(WHITE, c, 6))
+        pieces.add(Rook(WHITE,0,7)); pieces.add(Rook(WHITE,7,7))
+        pieces.add(Knight(WHITE,1,7)); pieces.add(Knight(WHITE,6,7))
+        pieces.add(Bishop(WHITE,2,7)); pieces.add(Bishop(WHITE,5,7))
+        pieces.add(Queen(WHITE,3,7)); pieces.add(King(WHITE,4,7))
 
-        // Blacks
-        pieces.add(Pawn(BLACK, 0, 1))
-        pieces.add(Pawn(BLACK, 1, 1))
-        pieces.add(Pawn(BLACK, 2, 1))
-        pieces.add(Pawn(BLACK, 3, 1))
-        pieces.add(Pawn(BLACK, 4, 1))
-        pieces.add(Pawn(BLACK, 5, 1))
-        pieces.add(Pawn(BLACK, 6, 1))
-        pieces.add(Pawn(BLACK, 7, 1))
-        pieces.add(Rook(BLACK, 0, 0))
-        pieces.add(Rook(BLACK, 7, 0))
-        pieces.add(Knight(BLACK, 1, 0))
-        pieces.add(Knight(BLACK, 6, 0))
-        pieces.add(Bishop(BLACK, 2, 0))
-        pieces.add(Bishop(BLACK, 5, 0))
-        pieces.add(Queen(BLACK, 3, 0))
-        pieces.add(King(BLACK, 4, 0))
+        // Black
+        for (c in 0 until 8) pieces.add(Pawn(BLACK, c, 1))
+        pieces.add(Rook(BLACK,0,0)); pieces.add(Rook(BLACK,7,0))
+        pieces.add(Knight(BLACK,1,0)); pieces.add(Knight(BLACK,6,0))
+        pieces.add(Bishop(BLACK,2,0)); pieces.add(Bishop(BLACK,5,0))
+        pieces.add(Queen(BLACK,3,0)); pieces.add(King(BLACK,4,0))
 
-        // Preparing Simulated Pieces
+        // attach panel refs
+        for (p in pieces) p.panel = this
+
         copyPieces(pieces, simPieces)
     }
 
-    /**
-    * Input Helpers
-    */
-
-    // Handling Key Presses
+    // Input wrappers (pixel coords)
     fun touchDown(px: Int, py: Int) {
         mouse.press(px, py)
-        // Process pick-up on press
         updateSelectionOnPress()
     }
 
-    // Handling Mouse Movements
     fun touchMove(px: Int, py: Int) {
         mouse.move(px, py)
-        // Simulate dragging behavior
-        if (activePiece != null) simulate()
+        simulate()
     }
 
-    // Handling Key Releases
     fun touchUp(px: Int, py: Int) {
         mouse.release(px, py)
-        // Finalizing Movement
-        if (activePiece != null) {
-            if (validSquare) {
-                // Confirming Movement
-                copyPieces(simPieces, pieces)
-                activePiece!!.updatePosition()
-                if (castlingPiece != null) {
-                    castlingPiece!!.updatePosition()
-                }
-
-                if (isKingInCheck && isCheckmate) {
-                    gameOver = true
-                } else if (isStalemate()) {
-                    stalemate = true
-                } else {
-                    if (canPromote()) {
-                        promotion = true
-                    } else {
-                        changePlayer()
-                    }
-                }
-            } else {
-                // Reverting on Invalid Moves
-                copyPieces(simPieces, pieces)
-                activePiece!!.resetPosition()
-                activePiece = null
-            }
-        }
+        finalizeMove()
     }
 
-    /**
-     * Square Coordinate Helpers
-     */
-
+    // Adapter functions used by older code (kept for compatibility)
     fun selectSquare(col: Int, row: Int) {
         val px = col * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
         val py = row * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
         touchDown(px, py)
+        touchMove(px, py)
     }
 
     fun moveSelectedTo(col: Int, row: Int) {
         val px = col * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
         val py = row * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
-        touchMove(px, py)
-        touchUp(px, py)
+        touchMove(px, py); touchUp(px, py)
     }
 
-    /**
-     * Core
-     */
-
     private fun updateSelectionOnPress() {
-        // Selecting Present-of Colour Piece if no Active Piece
         if (activePiece == null) {
-            // Converting Mouse Coordinates
-            val mx = mouse.x / Board.SQUARE_SIZE
-            val my = mouse.y / Board.SQUARE_SIZE
-            for (piece in simPieces) {
-                if (piece.color == currentColor && piece.col == mx && piece.row == my) {
-                    activePiece = piece
+            val c = mouse.x / Board.SQUARE_SIZE
+            val r = mouse.y / Board.SQUARE_SIZE
+            for (p in simPieces) {
+                if (p.col == c && p.row == r && p.color == currentColor) {
+                    activePiece = p
                     break
                 }
             }
         } else {
-            // Simulating Move
+            // if already active just call simulate
             simulate()
         }
     }
 
-    /**
-     * Simulating Currently Held Piece
-     * Called in Drag/Release Events
-     * Checks if the Piece can move and if the square is valid
-     */
-
     private fun simulate() {
-        canMove = false
-        validSquare = false
-
-        // Copying Piece to Sim List
+        canMove = false; validSquare = false
+        clearHighlights()
         copyPieces(pieces, simPieces)
 
-        // Reseting Castling Piece Placeholders
+        // reset castlingPiece placeholder
         if (castlingPiece != null) {
             castlingPiece!!.col = castlingPiece!!.preCol
             castlingPiece!!.x = castlingPiece!!.getX(castlingPiece!!.col)
             castlingPiece = null
         }
 
-        // Updating Active Piece Coords based on Moue Movements
-        activePiece!!.x = mouse.x - Board.HALF_SQUARE_SIZE
-        activePiece!!.y = mouse.y - Board.HALF_SQUARE_SIZE
-        activePiece!!.col = activePiece!!.getCol(activePiece!!.x)
-        activePiece!!.row = activePiece!!.getRow(activePiece!!.y)
+        val p = activePiece ?: return
 
-        // Checking for legal squares
-        if (activePiece!!.canMove(activePiece!!.col, activePiece!!.row)) {
+        // move active piece with mouse
+        p.x = mouse.x - Board.HALF_SQUARE_SIZE
+        p.y = mouse.y - Board.HALF_SQUARE_SIZE
+        p.col = p.getCol(p.x); p.row = p.getRow(p.y)
+
+        if (p.canMove(p.col, p.row)) {
             canMove = true
-
-            // Removing from sim list on collisions
-            if (activePiece!!.hittingPiece != null) {
-                simPieces.remove(activePiece!!.hittingPiece)
-            }
-
-            checkCastling()
-
-            if (!isIllegal(activePiece!!) && !opponentCanCaptureKing()) {
-                validSquare = true
-            }
+            if (p.hittingPiece != null) simPieces.remove(p.hittingPiece)
+            validSquare = true
         }
     }
 
-    // Checking Kings for Illegal Positions
-    private fun isIllegal(king: Piece): Boolean {
-        if (king.type == Type.KING) {
-            for (piece in simPieces) {
-                if (piece !== king && piece.color != king.color && piece.canMove(king.col, king.row)) {
-                    return true
+    private fun finalizeMove() {
+        val p = activePiece ?: return
+
+        if (validSquare) {
+            // apply simPieces into pieces
+            copyPieces(simPieces, pieces)
+            // find the moved piece in pieces with same pre coordinates? simpler: update position on moved piece reference
+            // update position of the piece that matches the moved piece by type+preCol+preRow (robust engine would use IDs)
+            for (piece in pieces) {
+                if (piece.preCol == p.preCol && piece.preRow == p.preRow && piece.type == p.type && piece.color == p.color) {
+                    piece.col = p.col; piece.row = p.row
+                    piece.updatePosition()
+                    break
                 }
             }
-        }
-        return false
-    }
 
-    // Checking for Mates & Checkmates
-    private fun opponentCanCaptureKing(): Boolean {
-        val king = getKing(false)
-        for (piece in simPieces) {
-            if (piece.color != king.color && piece.canMove(king.col, king.row)) {
-                return true
+            // handle castling's rook move
+            if (castlingPiece != null) {
+                // castlingPiece was set to the rook to be moved; adjust its preCol/preRow and final col in copyForSim logic
+                castlingPiece!!.updatePosition()
             }
-        }
-        return false
-    }
 
-    private val isKingInCheck: Boolean
-        get() {
-            val king = getKing(true) // opponent king
-            if (activePiece!!.canMove(king.col, king.row)) {
-                checkingPiece = activePiece
-                return true
-            } else {
-                checkingPiece = null
-            }
-            return false
-        }
-
-    private fun getKing(opponent: Boolean): Piece {
-        for (piece in simPieces) {
-            if (opponent) {
-                if (piece.type == Type.KING && piece.color != currentColor) return piece
-            } else {
-                if (piece.type == Type.KING && piece.color == currentColor) return piece
-            }
-        }
-        throw IllegalStateException("King not found - corrupted game state")
-    }
-
-    private val isCheckmate: Boolean
-        get() {
-            // Opponent's King
-            val king = getKing(true)
-            if (kingCanMove(king)) return false
-
-            // If king cannot move, we try to block the checking piece's attacking path
-            val cp = checkingPiece ?: return true
-            val colDiff = abs(cp.col - king.col)
-            val rowDiff = abs(cp.row - king.row)
-
-            // vertical/horizontal/diagonal blocking logic
-            if (colDiff == 0) {
-                if (cp.row < king.row) {
-                    for (r in cp.row until king.row) {
-                        for (piece in simPieces) {
-                            if (piece !== king && piece.color != currentColor && piece.canMove(cp.col, r)) {
-                                return false
-                            }
-                        }
-                    }
-                } else {
-                    for (r in cp.row downTo (king.row + 1)) {
-                        for (piece in simPieces) {
-                            if (piece !== king && piece.color != currentColor && piece.canMove(cp.col, r)) {
-                                return false
-                            }
-                        }
-                    }
-                }
-            } else if (rowDiff == 0) {
-                if (cp.col < king.col) {
-                    for (c in cp.col until king.col) {
-                        for (piece in simPieces) {
-                            if (piece !== king && piece.color != currentColor && piece.canMove(c, cp.row)) {
-                                return false
-                            }
-                        }
-                    }
-                } else {
-                    for (c in cp.col downTo (king.col + 1)) {
-                        for (piece in simPieces) {
-                            if (piece !== king && piece.color != currentColor && piece.canMove(c, cp.row)) {
-                                return false
-                            }
-                        }
-                    }
-                }
-            } else if (colDiff == rowDiff) {
-                // diagonal checking piece, iterate squares on diagonal between checking piece and king
-                if (cp.row < king.row) {
-                    if (cp.col < king.col) {
-                        var c = cp.col
-                        var r = cp.row
-                        while (c < king.col) {
-                            for (piece in simPieces) {
-                                if (piece !== king && piece.color != currentColor && piece.canMove(c, r)) return false
-                            }
-                            c++; r++
-                        }
-                    } else {
-                        var c = cp.col
-                        var r = cp.row
-                        while (c > king.col) {
-                            for (piece in simPieces) {
-                                if (piece !== king && piece.color != currentColor && piece.canMove(c, r)) return false
-                            }
-                            c--; r++
-                        }
-                    }
-                } else {
-                    if (cp.col < king.col) {
-                        var c = cp.col
-                        var r = cp.row
-                        while (c < king.col) {
-                            for (piece in simPieces) {
-                                if (piece !== king && piece.color != currentColor && piece.canMove(c, r)) return false
-                            }
-                            c++; r--
-                        }
-                    } else {
-                        var c = cp.col
-                        var r = cp.row
-                        while (c > king.col) {
-                            for (piece in simPieces) {
-                                if (piece !== king && piece.color != currentColor && piece.canMove(c, r)) return false
-                            }
-                            c--; r--
-                        }
-                    }
+            // promotion?
+            if (p.type != null && p.type!!.name == "PAWN") {
+                if ((p.color == WHITE && p.row == 0) || (p.color == BLACK && p.row == 7)) {
+                    promotion = true
+                    // leave activePiece set so promoteTo can know location
+                    activePiece = p
+                    return
                 }
             }
-            return true
-        }
 
-    private fun kingCanMove(king: Piece): Boolean {
-        // Testing all adjacent squares
-        val deltas = listOf(-1 to -1, 0 to -1, 1 to -1, -1 to 0, 1 to 0, -1 to 1, 0 to 1, 1 to 1)
-        for ((dc, dr) in deltas) {
-            if (isValidMove(king, dc, dr)) return true
-        }
-        return false
-    }
-
-    private fun isValidMove(king: Piece, colPlus: Int, rowPlus: Int): Boolean {
-        var isValidMove = false
-        // Temporarily updating king position
-        king.col += colPlus
-        king.row += rowPlus
-        if (king.canMove(king.col, king.row)) {
-            if (king.hittingPiece != null) simPieces.remove(king.hittingPiece)
-            if (!isIllegal(king)) isValidMove = true
-        }
-        // Reset
-        king.resetPosition()
-        copyPieces(pieces, simPieces)
-        return isValidMove
-    }
-
-    private fun isStalemate(): Boolean {
-        var count = 0
-        for (piece in simPieces) {
-            if (piece.color != currentColor) count++
-        }
-        if (count == 1) {
-            if (!kingCanMove(getKing(true))) return true
-        }
-        return false
-    }
-
-    private fun checkCastling() {
-        if (castlingPiece != null) {
-            if (castlingPiece!!.col == 0) {
-                castlingPiece!!.col += 3
-            } else if (castlingPiece!!.col == 7) {
-                castlingPiece!!.col -= 2
-            }
-            castlingPiece!!.x = castlingPiece!!.getX(castlingPiece!!.col)
-        }
-    }
-
-    private fun changePlayer() {
-        if (currentColor == WHITE) {
-            currentColor = BLACK
-            for (piece in pieces) if (piece.color == BLACK) piece.twoStepped = false
+            // switch player
+            changePlayer()
         } else {
-            currentColor = WHITE
-            for (piece in pieces) if (piece.color == WHITE) piece.twoStepped = false
+            // revert piece
+            p.resetPosition()
         }
+
+        // cleanup
         activePiece = null
+        clearHighlights()
+        copyPieces(pieces, simPieces)
     }
 
-    private fun canPromote(): Boolean {
-        if (activePiece!!.type == Type.PAWN) {
-            if (currentColor == WHITE && activePiece!!.row == 0 || currentColor == BLACK && activePiece!!.row == 7) {
-                promotionPieces.clear()
-                promotionPieces.add(Rook(currentColor, 9, 2))
-                promotionPieces.add(Knight(currentColor, 9, 3))
-                promotionPieces.add(Bishop(currentColor, 9, 4))
-                promotionPieces.add(Queen(currentColor, 9, 5))
-                return true
-            }
-        }
-        return false
-    }
-
-    // Pawn Promotions
     fun promoteTo(index: Int) {
         if (!promotion) return
-        if (index < 0 || index >= promotionPieces.size) return
-
-        val chosenType = promotionPieces[index].type
-        when (chosenType) {
-            Type.ROOK -> simPieces.add(Rook(currentColor, activePiece!!.col, activePiece!!.row))
-            Type.KNIGHT -> simPieces.add(Knight(currentColor, activePiece!!.col, activePiece!!.row))
-            Type.BISHOP -> simPieces.add(Bishop(currentColor, activePiece!!.col, activePiece!!.row))
-            Type.QUEEN -> simPieces.add(Queen(currentColor, activePiece!!.col, activePiece!!.row))
-            else -> {}
+        // find pawn in pieces matching activePiece pre coords
+        val pawn = pieces.find { it.type?.name == "PAWN" && it.col == activePiece!!.col && it.row == activePiece!!.row && it.color == activePiece!!.color }
+        if (pawn != null) pieces.remove(pawn)
+        val col = activePiece!!.col; val row = activePiece!!.row; val color = activePiece!!.color
+        val newPiece: Piece = when (index) {
+            0 -> Queen(color, col, row)
+            1 -> Rook(color, col, row)
+            2 -> Bishop(color, col, row)
+            3 -> Knight(color, col, row)
+            else -> Queen(color, col, row)
         }
-        simPieces.remove(activePiece)
-        copyPieces(simPieces, pieces)
-        activePiece = null
+        newPiece.panel = this
+        pieces.add(newPiece)
         promotion = false
+        activePiece = null
+        copyPieces(pieces, simPieces)
         changePlayer()
     }
 
-    // Copying Source List to Target List
-    private fun copyPieces(source: ArrayList<Piece>, target: ArrayList<Piece>) {
-        target.clear()
-        for (p in source) {
-            target.add(p.copyForSim())
-        }
+    private fun changePlayer() {
+        currentColor = if (currentColor == WHITE) BLACK else WHITE
+        // reset twoStepped for that color's pieces
+        for (p in pieces) if (p.color == currentColor) p.twoStepped = false
     }
 
-    // Piece Position Lookup
     fun findPieceAt(col: Int, row: Int): Piece? {
-        for (p in pieces) {
-            if (p.col == col && p.row == row) return p
-        }
-        return null
+        return pieces.find { it.col == col && it.row == row }
     }
 
-    // Piece Current Position
     fun getCurrentLayout(): Array<Array<String>> {
         val grid = Array(8) { Array(8) { "" } }
         for (p in pieces) {
             val code = (if (p.color == WHITE) "w" else "b") + when (p.type) {
-                Type.PAWN -> "P"
-                Type.ROOK -> "R"
-                Type.KNIGHT -> "N"
-                Type.BISHOP -> "B"
-                Type.QUEEN -> "Q"
-                Type.KING -> "K"
+                com.example.webappdev.engine.main.Type.PAWN -> "P"
+                com.example.webappdev.engine.main.Type.ROOK -> "R"
+                com.example.webappdev.engine.main.Type.KNIGHT -> "N"
+                com.example.webappdev.engine.main.Type.BISHOP -> "B"
+                com.example.webappdev.engine.main.Type.QUEEN -> "Q"
+                com.example.webappdev.engine.main.Type.KING -> "K"
                 else -> "?"
             }
             if (p.row in 0..7 && p.col in 0..7) grid[p.row][p.col] = code
@@ -491,12 +221,18 @@ class GamePanel {
         return grid
     }
 
-    // Game Reset Back to Original Positions
-    fun resetGame() {
-        initialize()
+    private fun copyPieces(source: ArrayList<Piece>, target: ArrayList<Piece>) {
+        target.clear()
+        for (p in source) {
+            val cp = p.copyForSim()
+            cp.panel = this
+            target.add(cp)
+        }
     }
 
-    // Coordinate Conversion Helpers
-    fun pixelToCol(px: Int): Int = (px + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
-    fun pixelToRow(py: Int): Int = (py + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
+    fun resetGame() = initialize()
+
+    // helpers
+    fun pixelToCol(px: Int) = (px + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
+    fun pixelToRow(py: Int) = (py + Board.HALF_SQUARE_SIZE) / Board.SQUARE_SIZE
 }

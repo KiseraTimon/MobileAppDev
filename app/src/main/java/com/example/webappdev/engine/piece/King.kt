@@ -9,47 +9,47 @@ class King(color: Int, col: Int, row: Int) : Piece(color, col, row) {
 
     override fun copyForSim(): Piece {
         val p = King(color, col, row)
+        p.panel = this.panel
         p.type = this.type
-        p.x = this.x
-        p.y = this.y
-        p.preCol = this.preCol
-        p.preRow = this.preRow
+        p.x = this.x; p.y = this.y
+        p.preCol = this.preCol; p.preRow = this.preRow
         p.hittingPiece = this.hittingPiece
-        p.moved = this.moved
-        p.twoStepped = this.twoStepped
+        p.moved = this.moved; p.twoStepped = this.twoStepped
         return p
     }
 
     override fun canMove(targetCol: Int, targetRow: Int): Boolean {
+        panel.clearHighlights()
         if (!isWithinBoard(targetCol, targetRow)) return false
+        val dx = abs(targetCol - preCol)
+        val dy = abs(targetRow - preRow)
 
-        // Basic one-square moves
-        if (abs(targetCol - preCol) + abs(targetRow - preRow) == 1 ||
-            abs(targetCol - preCol) * abs(targetRow - preRow) == 1
-        ) {
-            if (isValidSquare(targetCol, targetRow)) return true
+        // normal one-step moves
+        if ((dx <= 1 && dy <= 1) && !(dx == 0 && dy == 0)) {
+            val hit = panel.findPieceAt(targetCol, targetRow)
+            if (hit == null) { panel.validMoves.add(targetCol to targetRow); return true }
+            if (hit.color != color) { hittingPiece = hit; panel.captureMoves.add(targetCol to targetRow); return true }
+            return false
         }
 
-        // Castling logic
-        if (!moved) {
-            // Right castling
-            if (targetCol == preCol + 2 && targetRow == preRow && !pieceIsOnStraightLine(targetCol, targetRow)) {
-                for (piece in GamePanel().pieces) {
-                    if (piece.col == preCol + 3 && piece.row == preRow && !piece.moved) {
-                        GamePanel().castlingPiece = piece
-                        return true
-                    }
+        // castling (visual/placement only; full legality requires check tests)
+        if (!moved && dy == 0) {
+            // king side
+            if (targetCol == preCol + 2) {
+                // check rook exists at preCol+3 and hasn't moved
+                val r = panel.findPieceAt(preCol + 3, preRow)
+                if (r != null && r.type == Type.ROOK && !r.moved) {
+                    panel.validMoves.add(targetCol to targetRow)
+                    panel.castlingPiece = r
+                    return true
                 }
             }
-            // Left castling
-            if (targetCol == preCol - 2 && targetRow == preRow && !pieceIsOnStraightLine(targetCol, targetRow)) {
-                val pArray = arrayOfNulls<Piece>(2)
-                for (piece in GamePanel().simPieces) {
-                    if (piece.col == preCol - 3 && piece.row == targetRow) pArray[0] = piece
-                    if (piece.col == preCol - 4 && piece.row == targetRow) pArray[1] = piece
-                }
-                if (pArray[0] == null && pArray[1] != null && !pArray[1]!!.moved) {
-                    GamePanel().castlingPiece = pArray[1]
+            // queen side
+            if (targetCol == preCol - 2) {
+                val r = panel.findPieceAt(preCol - 4, preRow)
+                if (r != null && r.type == Type.ROOK && !r.moved) {
+                    panel.validMoves.add(targetCol to targetRow)
+                    panel.castlingPiece = r
                     return true
                 }
             }

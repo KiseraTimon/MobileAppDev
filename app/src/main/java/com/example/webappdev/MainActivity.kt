@@ -14,10 +14,11 @@ import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
 
+    // Authentication States
     private val firebaseAuth = FirebaseAuth.getInstance()
     private var authListener: FirebaseAuth.AuthStateListener? = null
 
-    // Holding States
+    // User
     private var firebaseUser by mutableStateOf(firebaseAuth.currentUser)
 
     // Navigation Flags
@@ -49,12 +50,14 @@ class MainActivity : ComponentActivity() {
 
                 // Screen-rendering Logic
                 when {
+                    // Timer Screen
                     showTimer -> {
                         MatchTimerScreen(
                             onBack = { showTimer = false }
                         )
                     }
 
+                    // Game Screen (Must be authenticated)
                     isInGame && user != null -> {
                         GameScreen(
                             user = user,
@@ -75,7 +78,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Lifecycle Management
+    /*
+    Lifecycle Management
+    */
 
     override fun onStart() {
         super.onStart()

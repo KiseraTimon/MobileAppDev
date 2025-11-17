@@ -9,51 +9,59 @@ class Pawn(color: Int, col: Int, row: Int) : Piece(color, col, row) {
 
     override fun copyForSim(): Piece {
         val p = Pawn(color, col, row)
+        p.panel = this.panel
         p.type = this.type
-        p.x = this.x
-        p.y = this.y
-        p.preCol = this.preCol
-        p.preRow = this.preRow
+        p.x = this.x; p.y = this.y
+        p.preCol = this.preCol; p.preRow = this.preRow
         p.hittingPiece = this.hittingPiece
-        p.moved = this.moved
-        p.twoStepped = this.twoStepped
+        p.moved = this.moved; p.twoStepped = this.twoStepped
         return p
     }
 
     override fun canMove(targetCol: Int, targetRow: Int): Boolean {
-        if (!isWithinBoard(targetCol, targetRow) || isSameSquare(targetCol, targetRow)) return false
+        panel.clearHighlights()
+        if (!isWithinBoard(targetCol, targetRow)) return false
+        if (isSameSquare(targetCol, targetRow)) return false
 
-        val moveValue = if (color == GamePanel.WHITE) -1 else 1
+        val dir = if (color == GamePanel.WHITE) -1 else 1
+        val one = preRow + dir
+        val two = preRow + dir * 2
+        val left = preCol - 1
+        val right = preCol + 1
 
-        // Edible Collisions
-        hittingPiece = null
-        for (p in GamePanel().simPieces) {
-            if (p.col == targetCol && p.row == targetRow && p !== this) {
-                hittingPiece = p
-                break
+        // forward one
+        if (targetCol == preCol && targetRow == one) {
+            if (panel.findPieceAt(preCol, one) == null) {
+                panel.validMoves.add(preCol to one)
+                return true
             }
         }
-
-        // 1-square forward
-        if (targetCol == preCol && targetRow == preRow + moveValue && hittingPiece == null) return true
-
-        // 2-square forward if first move and no blocking piece
-        if (targetCol == preCol && targetRow == preRow + moveValue * 2 && hittingPiece == null && !moved && !pieceIsOnStraightLine(
-                targetCol,
-                targetRow
-            )
-        ) return true
-
-        // Diagonal Capture
-        val target = hittingPiece
-        if (abs(targetCol - preCol) == 1 && targetRow == preRow + moveValue && target != null && target.color != color) return true
-
-        // En-passant
-        if (abs(targetCol - preCol) == 1 && targetRow == preRow + moveValue) {
-            for (piece in GamePanel().simPieces) {
-                if (piece.col == targetCol && piece.row == preRow && piece.twoStepped) {
-                    hittingPiece = piece
-                    return true
+        // forward two
+        if (!moved && targetCol == preCol && targetRow == two) {
+            if (panel.findPieceAt(preCol, one) == null && panel.findPieceAt(preCol, two) == null) {
+                panel.validMoves.add(preCol to two)
+                return true
+            }
+        }
+        // captures
+        if (targetRow == one) {
+            val hitL = panel.findPieceAt(left, one)
+            if (targetCol == left && hitL != null && hitL.color != color) {
+                hittingPiece = hitL; panel.captureMoves.add(left to one); return true
+            }
+            val hitR = panel.findPieceAt(right, one)
+            if (targetCol == right && hitR != null && hitR.color != color) {
+                hittingPiece = hitR; panel.captureMoves.add(right to one); return true
+            }
+        }
+        // en-passant
+        for (p in panel.pieces) {
+            if (p.type == Type.PAWN && p.color != color && p.twoStepped && p.row == preRow) {
+                if (p.col == left && targetCol == left && targetRow == one) {
+                    hittingPiece = p; panel.captureMoves.add(left to one); return true
+                }
+                if (p.col == right && targetCol == right && targetRow == one) {
+                    hittingPiece = p; panel.captureMoves.add(right to one); return true
                 }
             }
         }

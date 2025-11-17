@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.webappdev.engine.main.Board
 import com.example.webappdev.engine.main.GamePanel
 import com.example.webappdev.engine.main.GamePanel.Companion.WHITE
 import com.example.webappdev.model.User
@@ -18,258 +19,154 @@ import com.example.webappdev.ui.components.Footer
 import com.example.webappdev.ui.components.Navbar
 
 @Composable
-fun GameScreen(
-    user: User,
-    onExitGame: () -> Unit,
-    onRestart: () -> Unit
-) {
-    // --- Game State Controller ---
+fun GameScreen(user: User, onExitGame: () -> Unit, onRestart: () -> Unit) {
     val controller = remember { GamePanel() }
-    var boardLayout by remember { mutableStateOf(controller.getCurrentLayout()) }
-    var currentTurn by remember { mutableStateOf("White") }
-    var statusMessage by remember { mutableStateOf("White to move") }
+    var board by remember { mutableStateOf(controller.getCurrentLayout()) }
+    var status by remember { mutableStateOf("Choose color to start") }
+    var playerColor by remember { mutableStateOf<Int?>(null) } // WHITE or BLACK
+    var showPromotion by remember { mutableStateOf(false) }
     var capturedPieces by remember { mutableStateOf(mutableListOf<String>()) }
-    var showPromotionDialog by remember { mutableStateOf(false) }
 
-    // --- Initialize game ---
-    LaunchedEffect(Unit) {
-        controller.initialize()
-        boardLayout = controller.getCurrentLayout()
+    LaunchedEffect(playerColor) {
+        if (playerColor != null) {
+            controller.initialize()
+            board = controller.getCurrentLayout()
+            status = "White to move"
+        }
     }
 
-    // --- Scaffold layout ---
-    Scaffold(
-        topBar = {
-            Navbar(
-                user = user,
-                isInGame = true
-            )
-        },
-        bottomBar = {
-            Footer(
-                isInGame = true,
-                onExitGame = onExitGame,
-                onRestart = {
-                    controller.resetGame()
-                    boardLayout = controller.getCurrentLayout()
-                    currentTurn = "White"
-                    statusMessage = "White to move"
-                    capturedPieces.clear()
-                    user.points = 0
-                    onRestart()
-                }
-            )
-        }
+    Scaffold(topBar = { Navbar(user = user, isInGame = true) },
+        bottomBar = { Footer(isInGame = playerColor != null, onExitGame = onExitGame, onRestart = { controller.resetGame(); board = controller.getCurrentLayout(); status = "White to move"; capturedPieces.clear(); onRestart() }) }
     ) { padding ->
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Turn and status
-            Text(
-                text = statusMessage,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.DarkGray,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            // Chess board
-            ChessBoard(
-                board = boardLayout,
-                onSquareClick = { col, row ->
-                    handleBoardTap(
-                        controller,
-                        col,
-                        row,
-                        onUpdate = { boardLayout = controller.getCurrentLayout() },
-                        onCapture = { pieceCode ->
-                            capturedPieces.add(pieceCode)
-                            user.points += pieceValue(pieceCode)
-                        },
-                        onTurnSwitch = { isWhiteTurn ->
-                            currentTurn = if (isWhiteTurn) "White" else "Black"
-                            statusMessage = "$currentTurn to move"
-                        },
-                        onPromotion = {
-                            showPromotionDialog = true
-                        },
-                        onCheckmate = {
-                            statusMessage = "Checkmate! $currentTurn wins!"
-                        },
-                        onStalemate = {
-                            statusMessage = "Stalemate! Game Drawn."
-                        }
-                    )
+        Column(modifier = Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            if (playerColor == null) {
+                Text("Choose color", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { playerColor = WHITE }) { Text("Play White") }
+                    Button(onClick = { playerColor = GamePanel.BLACK }) { Text("Play Black") }
                 }
-            )
+                Spacer(Modifier.height(8.dp))
+                Text("Your color sits closest to the footer.")
+                return@Column
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Text(status, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+            ChessBoard(controller = controller, engineBoard = board, playerColor = playerColor!!, onMoveComplete = {
+                // refresh board and status
+                val before = board.flatten().count { it.isNotEmpty() }
+                board = controller.getCurrentLayout()
+                val after = board.flatten().count { it.isNotEmpty() }
+                if (after < before) {
+                    // simple capture increment (improve later)
+                    capturedPieces.add("bP")
+                }
+                if (controller.promotion) {
+                    showPromotion = true
+                    return@ChessBoard
+                }
+                if (controller.gameOver) { status = "Checkmate!" ; return@ChessBoard }
+                if (controller.stalemate) { status = "Stalemate!" ; return@ChessBoard }
+                status = if (controller.currentColor == WHITE) "White to move" else "Black to move"
+            })
 
-            // Display captured pieces
+            Spacer(Modifier.height(12.dp))
             if (capturedPieces.isNotEmpty()) {
-                Text(
-                    text = "Captured: " + capturedPieces.joinToString(" ") { pieceToSymbol(it) },
-                    fontSize = 16.sp,
-                    color = Color.DarkGray
-                )
+                Text("Captured: ${capturedPieces.joinToString(" "){ pieceToSymbol(it)}}")
             }
 
-            // Promotion dialog
-            if (showPromotionDialog) {
-                PromotionDialog(
-                    onSelect = { index ->
-                        controller.promoteTo(index)
-                        boardLayout = controller.getCurrentLayout()
-                        showPromotionDialog = false
-                        statusMessage = "$currentTurn promoted a pawn!"
-                    }
-                )
+            if (showPromotion) {
+                PromotionDialog { idx ->
+                    controller.promoteTo(idx)
+                    board = controller.getCurrentLayout()
+                    showPromotion = false
+                }
             }
         }
     }
 }
 
-/**
- * Handles board tap logic: selecting & moving pieces, switching turns, scoring, etc.
- */
-private var selectedSquare: Pair<Int, Int>? = null
-
-private fun handleBoardTap(
+@Composable
+fun ChessBoard(
     controller: GamePanel,
-    col: Int,
-    row: Int,
-    onUpdate: () -> Unit,
-    onCapture: (String) -> Unit,
-    onTurnSwitch: (Boolean) -> Unit,
-    onPromotion: () -> Unit,
-    onCheckmate: () -> Unit,
-    onStalemate: () -> Unit
+    engineBoard: Array<Array<String>>,
+    playerColor: Int,
+    onMoveComplete: () -> Unit
 ) {
-    val selected = selectedSquare
-    if (selected == null) {
-        val piece = controller.findPieceAt(col, row)
-        if (piece != null && !controller.gameOver && !controller.stalemate) {
-            selectedSquare = col to row
-        }
-    } else {
-        val (fromCol, fromRow) = selected
-        controller.selectSquare(fromCol, fromRow)
-        val beforeCount = controller.getCurrentLayout().flatten().count { it.isNotEmpty() }
-        controller.moveSelectedTo(col, row)
-        val afterCount = controller.getCurrentLayout().flatten().count { it.isNotEmpty() }
-        selectedSquare = null
+    val light = Color(0xFFEEEED2); val dark = Color(0xFF769656)
+    val moveH = Color(0x8034C759); val capH = Color(0x80FF0000); val selH = Color(0x803A86FF)
 
-        // Check capture
-        if (afterCount < beforeCount) {
-            // Find what was captured (approximation)
-            onCapture("bP") // Placeholder: you can extend engine to return actual captured code
-        }
+    var selectedEngine by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-        // Check promotion
-        if (controller.promotion) {
-            onPromotion()
-            return
-        }
+    // mapping functions (full 180 rotation when player is BLACK)
+    fun uiToEngine(uiCol: Int, uiRow: Int): Pair<Int, Int> {
+        val engineRow = 7 - uiRow
+        val engineCol = if (playerColor == WHITE) uiCol else 7 - uiCol
+        return engineCol to engineRow
+    }
 
-        // Check end conditions
-        if (controller.gameOver) {
-            onCheckmate()
-            return
+    Column(modifier = Modifier.size(360.dp)) {
+        for (uiRow in 0 until 8) {
+            Row(modifier = Modifier.weight(1f)) {
+                for (uiCol in 0 until 8) {
+                    val (eCol,eRow) = uiToEngine(uiCol, uiRow)
+                    val isSel = selectedEngine == (eCol to eRow)
+                    val isMove = controller.validMoves.contains(eCol to eRow)
+                    val isCap = controller.captureMoves.contains(eCol to eRow)
+                    val base = if ((uiRow + uiCol) % 2 == 0) light else dark
+                    val bg = when {
+                        isSel -> selH
+                        isCap -> capH
+                        isMove -> moveH
+                        else -> base
+                    }
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight().background(bg).clickable {
+                        val piece = controller.findPieceAt(eCol, eRow)
+                        if (selectedEngine == null) {
+                            if (piece != null && piece.color == controller.currentColor) {
+                                selectedEngine = eCol to eRow
+                                val px = eCol * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                                val py = eRow * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                                controller.touchDown(px, py)
+                                controller.touchMove(px, py) // force simulate to populate highlights
+                            }
+                        } else {
+                            // attempt move
+                            val from = selectedEngine!!
+                            val to = eCol to eRow
+                            val fromPx = from.first * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                            val fromPy = from.second * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                            val toPx = to.first * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                            val toPy = to.second * Board.SQUARE_SIZE + Board.HALF_SQUARE_SIZE
+                            controller.touchDown(fromPx, fromPy)
+                            controller.touchMove(toPx, toPy)
+                            controller.touchUp(toPx, toPy)
+                            selectedEngine = null
+                            controller.clearHighlights()
+                            onMoveComplete()
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                        val pc = engineBoard[eRow][eCol]
+                        if (pc.isNotEmpty()) {
+                            Text(text = pieceToSymbol(pc), fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                                color = if (pc.startsWith("w")) Color.Black else Color.White)
+                        }
+                    }
+                }
+            }
         }
-
-        if (controller.stalemate) {
-            onStalemate()
-            return
-        }
-
-        // Switch turn
-        onTurnSwitch(controller.currentColor == WHITE)
-        onUpdate()
     }
 }
 
-/**
- * Simple piece-to-symbol mapping
- */
-private fun pieceToSymbol(code: String): String = when (code) {
+private fun pieceToSymbol(code: String) = when (code) {
     "wK" -> "♔"; "wQ" -> "♕"; "wR" -> "♖"; "wB" -> "♗"; "wN" -> "♘"; "wP" -> "♙"
     "bK" -> "♚"; "bQ" -> "♛"; "bR" -> "♜"; "bB" -> "♝"; "bN" -> "♞"; "bP" -> "♟"
     else -> ""
 }
 
-/**
- * Assigns points by captured piece type
- */
-private fun pieceValue(code: String): Int = when (code.last()) {
-    'P' -> 1
-    'N', 'B' -> 3
-    'R' -> 5
-    'Q' -> 9
-    else -> 0
-}
-
-/**
- * Composable 8x8 chessboard UI
- */
 @Composable
-fun ChessBoard(
-    board: Array<Array<String>>,
-    onSquareClick: (Int, Int) -> Unit
-) {
-    val lightColor = Color(0xFFEEEED2)
-    val darkColor = Color(0xFF769656)
-
-    Column(modifier = Modifier.size(360.dp)) {
-        for (row in 0 until 8) {
-            Row(modifier = Modifier.weight(1f)) {
-                for (col in 0 until 8) {
-                    val color = if ((row + col) % 2 == 0) lightColor else darkColor
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .background(color)
-                            .clickable { onSquareClick(col, row) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val piece = board[row][col]
-                        if (piece.isNotEmpty()) {
-                            Text(
-                                text = pieceToSymbol(piece),
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (piece.startsWith("w")) Color.Black else Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Promotion selection dialog (Queen, Rook, Bishop, Knight)
- */
-@Composable
-fun PromotionDialog(onSelect: (Int) -> Unit) {
-    AlertDialog(
-        onDismissRequest = {},
-        title = { Text("Promote Pawn") },
-        text = {
-            Column {
-                listOf("Queen", "Rook", "Bishop", "Knight").forEachIndexed { index, name ->
-                    TextButton(onClick = { onSelect(index) }) {
-                        Text(text = name, fontSize = 18.sp)
-                    }
-                }
-            }
-        },
-        confirmButton = {}
-    )
+fun PromotionDialog(onSelect: (Int)->Unit) {
+    AlertDialog(onDismissRequest = {}, title = { Text("Promote Pawn") }, text = {
+        Column { listOf("Queen","Rook","Bishop","Knight").forEachIndexed { i,n -> TextButton(onClick = { onSelect(i) }){ Text(n) } } }
+    }, confirmButton = {})
 }
